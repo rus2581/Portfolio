@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio with Total Value</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tbody tr:hover {
+            background-color: #f1f1f1;
+        }
+        button {
+            padding: 5px 10px;
+            margin: 5px;
+            border: none;
+            background-color: #1cc88a;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #13855c;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 5px;
+            border: none;
+            background: transparent;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+        }
+        .remove-btn {
+            background-color: #e74a3b;
+            border-radius: 5px;
+        }
+        .remove-btn:hover {
+            background-color: #c23616;
+        }
+        .value, .percentage {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="portfolioTitle">Portfolio Value: 0.00 USDT</h1>
+        <div class="chart-container" id="portfolioChart"></div>
+
+        <button onclick="addRow()">Add Row</button>
+        <table id="portfolioTable">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Coins</th>
+                    <th>Price (USDT)</th>
+                    <th>Value (USDT)</th>
+                    <th>Portfolio (%)</th>
+                    <th>Remove</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be dynamically populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const portfolioDataKey = 'portfolioData'; // LocalStorage key for saving portfolio data
+
+        // Function to update the price when asset is changed
+        async function updatePrice(inputElement) {
+            const asset = inputElement.value.toUpperCase();
+            const priceInput = inputElement.closest('tr').querySelector('td:nth-child(3) input');
+
+            if (asset === "USDT") {
+                priceInput.value = '-';
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${asset}USDT`);
+                const data = await response.json();
+                if (data.price) {
+                    priceInput.value = parseFloat(data.price).toFixed(2);
+                    recalculate();
+                } else {
+                    alert('Invalid asset symbol');
+                }
+            } catch (error) {
+                console.error('Error fetching price:', error);
+                alert('Error fetching price data');
+            }
+        }
+
+        // Function to recalculate the portfolio
+        function recalculate() {
+            const rows = document.querySelectorAll("#portfolioTable tbody tr");
+            let totalValue = 0;
+
+            rows.forEach(row => {
+                const coinsInput = row.querySelector('td:nth-child(2) input');
+                const priceInput = row.querySelector('td:nth-child(3) input');
+                const valueCell = row.querySelector(".value");
+                const coins = parseFloat(coinsInput.value) || 0;
+                const price = priceInput.value === '-' ? 0 : parseFloat(priceInput.value) || 0;
+
+                const value = price === 0 ? coins : coins * price;
+                valueCell.innerText = value.toFixed(2);
+                totalValue += value;
+            });
+
+            rows.forEach(row => {
+                const value = parseFloat(row.querySelector(".value").innerText) || 0;
+                const percentageCell = row.querySelector(".percentage");
+                const percentage = totalValue > 0 ? (value / totalValue) * 100 : 0;
+                percentageCell.innerText = percentage.toFixed(2);
+            });
+
+            document.getElementById("portfolioTitle").innerText = `Portfolio Value: ${totalValue.toFixed(2)} USDT`;
+            updateChart();
+            savePortfolioData();
+        }
+
+        // Function to update the portfolio chart
+        function updateChart() {
+            const rows = document.querySelectorAll("#portfolioTable tbody tr");
+            const labels = [];
+            const values = [];
+
+            rows.forEach(row => {
+                const assetInput = row.querySelector('td:nth-child(1) input');
+                const percentage = parseFloat(row.querySelector(".percentage").innerText);
+                labels.push(assetInput.value);
+                values.push(percentage);
+            });
+
+            const data = [{
+                values: values,
+                labels: labels,
+                type: 'pie',
+                hole: 0.3,
+                marker: { colors: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e'] },
+                rotation: 90
+            }];
+
+            const layout = {
+                title: '',
+                showlegend: true,
+                margin: { t: 0, b: 0, l: 0, r: 0 },
+                annotations: [{ x: 0.5, y: 0.5, text: "Portfolio", showarrow: false, font: { size: 24, color: 'black' }, align: 'center' }]
+            };
+
+            Plotly.newPlot('portfolioChart', data, layout);
+        }
+
+        // Function to add a new row
+        function addRow() {
+            const tableBody = document.querySelector("#portfolioTable tbody");
+            const newRow = `
+                <tr>
+                    <td><input type="text" placeholder="New Coin" onchange="updatePrice(this)"></td>
+                    <td><input type="number" step="0.000001" value="0.000000" onchange="recalculate()"></td>
+                    <td><input type="number" step="0.01" value="0" readonly></td>
+                    <td><span class="value">0.00</span></td>
+                    <td><span class="percentage">0.00</span>%</td>
+                    <td><button class="remove-btn" onclick="removeRow(this)">Remove</button></td>
+                </tr>`;
+            tableBody.insertAdjacentHTML("beforeend", newRow);
+            recalculate();
+        }
+
+        // Function to remove a specific row
+        function removeRow(buttonElement) {
+            buttonElement.closest('tr').remove();
+            recalculate();
+        }
+
+        // Function to save portfolio data to localStorage
+        function savePortfolioData() {
+            const rows = document.querySelectorAll("#portfolioTable tbody tr");
+            const portfolioData = Array.from(rows).map(row => ({
+                asset: row.querySelector('td:nth-child(1) input').value,
+                coins: parseFloat(row.querySelector('td:nth-child(2) input').value) || 0,
+                price: parseFloat(row.querySelector('td:nth-child(3) input').value) || 0
+            }));
+
+            localStorage.setItem(portfolioDataKey, JSON.stringify(portfolioData));
+        }
+
+        // Function to load portfolio data from localStorage
+        function loadPortfolioData() {
+            const savedData = localStorage.getItem(portfolioDataKey);
+            if (savedData) {
+                const portfolioData = JSON.parse(savedData);
+                const tableBody = document.querySelector("#portfolioTable tbody");
+
+                portfolioData.forEach(data => {
+                    const newRow = `
+                        <tr>
+                            <td><input type="text" value="${data.asset}" onchange="updatePrice(this)"></td>
+                            <td><input type="number" step="0.000001" value="${data.coins}" onchange="recalculate()"></td>
+                            <td><input type="number" step="0.01" value="${data.price}" readonly></td>
+                            <td><span class="value">${(data.coins * data.price).toFixed(2)}</span></td>
+                            <td><span class="percentage">0.00</span>%</td>
+                            <td><button class="remove-btn" onclick="removeRow(this)">Remove</button></td>
+                        </tr>`;
+                    tableBody.insertAdjacentHTML("beforeend", newRow);
+                });
+
+                recalculate();
+            }
+        }
+
+        // Function to update prices for all assets
+        async function updateAllPrices() {
+            const rows = document.querySelectorAll("#portfolioTable tbody tr");
+            for (const row of rows) {
+                const assetInput = row.querySelector('td:nth-child(1) input');
+                const priceInput = row.querySelector('td:nth-child(3) input');
+                const asset = assetInput.value.toUpperCase();
+
+                if (asset !== "USDT" && priceInput.value !== "-") {
+                    try {
+                        const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${asset}USDT`);
+                        const data = await response.json();
+                        if (data.price) {
+                            priceInput.value = parseFloat(data.price).toFixed(2);
+                            recalculate();
+                        } else {
+                            alert(`Invalid asset symbol: ${asset}`);
+                        }
+                    } catch (error) {
+                        console.error('Error fetching price:', error);
+                        alert('Error fetching price data');
+                    }
+                }
+            }
+        }
+
+        // Load portfolio data on page load
+        window.onload = function() {
+            loadPortfolioData();
+            setInterval(updateAllPrices, 60000); // Update prices every 60 seconds
+        };
+    </script>
+</body>
+</html>
